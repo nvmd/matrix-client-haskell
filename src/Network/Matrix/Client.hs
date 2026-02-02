@@ -1078,7 +1078,7 @@ getFilter session (UserID userID) (FilterID filterID) =
     path = "/_matrix/client/r0/user/" <> userID <> "/filter/" <> filterID
 
 -------------------------------------------------------------------------------
--- https://matrix.org/docs/spec/client_server/latest#get-matrix-client-r0-sync
+-- https://spec.matrix.org/latest/client-server-api/#get-matrix-client-r0-sync
 newtype Author = Author {unAuthor :: T.Text}
     deriving (Show, Eq)
     deriving newtype (FromJSON, ToJSON)
@@ -1228,6 +1228,7 @@ mkReply room re mt =
             EventRoomMessage (RoomMessageText oldMT) -> updateText oldMT
             EventRoomReply _ (RoomMessageText oldMT) -> updateText oldMT
             EventRoomEdit _ (RoomMessageText oldMT) -> updateText oldMT
+            EventReaction _ _ -> error $ "Can't reply to reaction"
             EventUnknown x -> error $ "Can't reply to " <> show x
      in EventRoomReply eventID (RoomMessageText newMessage)
 
