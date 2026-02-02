@@ -6,8 +6,7 @@
   nixConfig.bash-prompt = "[nix]λ ";
 
   inputs = {
-    nixpkgs.url =
-      "github:NixOS/nixpkgs/d3780c92e64472e8f9aa54f7bbb0dd4483b98303";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
