@@ -3,11 +3,10 @@
 module Network.Matrix.Client.Lens (
     -- MessageText
     _mtBody,
-    _mtType,
     _mtFormat,
     _mtFormattedBody,
     -- RoomMessage
-    _RoomMessageText,
+    -- _RoomMessageText,
     -- Event
     _EventRoomMessage,
     _EventRoomReply,
@@ -131,12 +130,6 @@ _mtBody = lens getter setter
     getter = mtBody
     setter mt t = mt{mtBody = t}
 
-_mtType :: Lens' MessageText MessageTextType
-_mtType = lens getter setter
-  where
-    getter = mtType
-    setter mt t = mt{mtType = t}
-
 _mtFormat :: Lens' MessageText (Maybe T.Text)
 _mtFormat = lens getter setter
   where
@@ -149,11 +142,11 @@ _mtFormattedBody = lens getter setter
     getter = mtFormattedBody
     setter mt t = mt{mtFormattedBody = t}
 
-_RoomMessageText :: Lens' RoomMessage MessageText
-_RoomMessageText = lens getter setter
-  where
-    getter = coerce
-    setter _ = RoomMessageText
+-- _RoomMessageText :: Lens' RoomMessage MessageText
+-- _RoomMessageText = lens getter setter
+--   where
+--     getter = coerce
+--     setter _ = RoomMessageText
 
 _EventRoomMessage :: Prism' Event RoomMessage
 _EventRoomMessage = prism' to from

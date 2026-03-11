@@ -58,7 +58,7 @@ integration sess1 sess2 = do
             -- Flush previous events
             Right sr <- sync sess2 Nothing Nothing Nothing Nothing
             Right (room : _) <- getJoinedRooms sess1
-            let msg body = RoomMessageText $ MessageText body TextType Nothing Nothing
+            let msg body = RoomMessageText $ MessageText body Nothing Nothing
             let since = srNextBatch sr
             Right eventID <- sendMessage sess1 room (EventRoomMessage $ msg "Hello") (TxnID since)
             Right reply <- sendMessage sess2 room (EventRoomReply eventID $ msg "Hi!") (TxnID since)
@@ -103,8 +103,14 @@ spec = describe "unit tests" $ do
                 eventID `shouldBe` EventID "$eventID"
                 annText `shouldBe` "\128077" -- :+1:
             _ -> error $ show resp
+    it "decode room message" $ do
+        resp <- decodeResp <$> pure "{\"body\":\"Hello\",\"msgtype\":\"m.text\"}"
+        case resp of
+            Right (Right roomMessageText) -> do
+                roomMessageText `shouldBe` RoomMessageText (MessageText "Hello" Nothing Nothing)
+            _ -> error $ show resp
     it "encode room message" $
-        encodePretty (RoomMessageText (MessageText "Hello" TextType Nothing Nothing))
+        encodePretty (RoomMessageText (MessageText "Hello" Nothing Nothing))
             `shouldBe` "{\"body\":\"Hello\",\"msgtype\":\"m.text\"}"
     it "does not retry on success" $
         checkPause (<=) $ do

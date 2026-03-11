@@ -1,8 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Matrix event data type
 module Network.Matrix.Events (
-    MessageTextType (..),
     MessageText (..),
     RoomMessage (..),
     Event (..),
@@ -12,77 +12,80 @@ module Network.Matrix.Events (
 )
 where
 
+import GHC.Generics (Generic)
+import Network.Matrix.Internal (aesonOptions)
 import Control.Applicative ((<|>))
 import Control.Monad (mzero)
-import Data.Aeson (FromJSON (..), Object, ToJSON (..), Value (Object, String), object, (.:), (.:?), (.=))
+import Data.Aeson (FromJSON (..), Object, ToJSON (..), Value (Object, String), object, (.:), (.=), genericParseJSON, genericToEncoding, genericToJSON)
 import Data.Aeson.Types (Pair)
+import qualified Data.Aeson.KeyMap as KeyMap
 import Data.Text (Text)
 
-data MessageTextType
-    = TextType
-    | EmoteType
-    | NoticeType
-    deriving (Eq, Show)
 
-instance FromJSON MessageTextType where
-    parseJSON (String name) = case name of
-        "m.text" -> pure TextType
-        "m.emote" -> pure EmoteType
-        "m.notice" -> pure NoticeType
-        _ -> mzero
-    parseJSON _ = mzero
-
-instance ToJSON MessageTextType where
-    toJSON mt = String $ case mt of
-        TextType -> "m.text"
-        EmoteType -> "m.emote"
-        NoticeType -> "m.notice"
-
+-- Messages of the `m.room.message` event with `msgtype` `text`
+-- https://spec.matrix.org/v1.17/client-server-api/#mtext
 data MessageText = MessageText
     { mtBody :: Text
-    , mtType :: MessageTextType
     , mtFormat :: Maybe Text
     , mtFormattedBody :: Maybe Text
     }
-    deriving (Show, Eq)
+    deriving (Generic, Show, Eq)
 
 instance FromJSON MessageText where
-    parseJSON (Object v) =
-        MessageText
-            <$> v .: "body"
-            <*> v .: "msgtype"
-            <*> v .:? "format"
-            <*> v .:? "formatted_body"
-    parseJSON _ = mzero
-
-messageTextAttr :: MessageText -> [Pair]
-messageTextAttr msg =
-    ["body" .= mtBody msg, "msgtype" .= mtType msg] <> format <> formattedBody
-  where
-    omitNull k = maybe [] (\v -> [k .= v])
-    format = omitNull "format" $ mtFormat msg
-    formattedBody = omitNull "formatted_body" $ mtFormattedBody msg
-
-reactionAttr :: [Pair]
-reactionAttr = ["msg_type" .= ("m.reaction" :: Text)]
+    parseJSON = genericParseJSON aesonOptions
 
 instance ToJSON MessageText where
-    toJSON = object . messageTextAttr
+    toJSON = genericToJSON aesonOptions
+    toEncoding = genericToEncoding aesonOptions
 
-newtype RoomMessage
-    = RoomMessageText MessageText
-    deriving (Show, Eq)
+-- | msgtype [m.image](https://spec.matrix.org/v1.17/client-server-api/#mimage)
+data MessageImage = MessageImage
+    { miBody :: Text
+    , miFile :: Maybe Text      -- required if the file is encrypted
+    , miFilename :: Maybe Text  -- since v1.10
+    , miFormat :: Maybe Text    -- since v1.10, required if formatted_body is specified
+    , miFormattedBody :: Maybe Text -- since v1.10, required if format is specified
+    -- , miInfo :: Maybe ImageInfo -- https://spec.matrix.org/v1.17/client-server-api/#mimage_imageinfo
+    , miUrl :: Maybe Text       -- required if the file is unencrypted
+    }
+    deriving (Generic, Show, Eq)
 
-roomMessageAttr :: RoomMessage -> [Pair]
-roomMessageAttr rm = case rm of
-    RoomMessageText mt -> messageTextAttr mt
+instance FromJSON MessageImage where
+    parseJSON = genericParseJSON aesonOptions
+
+instance ToJSON MessageImage where
+    toJSON = genericToJSON aesonOptions
+    toEncoding = genericToEncoding aesonOptions
+
+-- msgtypes of the `m.room.message` event
+-- https://spec.matrix.org/v1.17/client-server-api/#mroommessage-msgtypes
+data RoomMessage
+    = -- | https://spec.matrix.org/v1.17/client-server-api/#mtext
+      RoomMessageText MessageText
+    | -- | https://spec.matrix.org/v1.17/client-server-api/#mimage
+      RoomMessageImage MessageImage
+    | RoomMessageUnknown Object
+    deriving (Generic, Show, Eq)
 
 instance ToJSON RoomMessage where
     toJSON msg = case msg of
-        RoomMessageText mt -> toJSON mt
+        RoomMessageText mt -> mergeTag "m.text" (toJSON mt)
+        RoomMessageImage mi -> mergeTag "m.image" (toJSON mi)
+        RoomMessageUnknown obj -> Object obj
+      where
+        mergeTag tag (Object o) = Object $ KeyMap.insert "msgtype" (String tag) o
+        mergeTag _ v = v
 
 instance FromJSON RoomMessage where
-    parseJSON x = RoomMessageText <$> parseJSON x
+    parseJSON (Object content) = parseByMessageType <|> pure (RoomMessageUnknown content)
+      where
+        parseByMessageType = do
+            msgType <- content .: "msgtype"
+            case (msgType :: Text) of
+                "m.text"  -> RoomMessageText  <$> parseJSON (Object content)
+                "m.image" -> RoomMessageImage <$> parseJSON (Object content)
+                _         -> mzero
+    parseJSON _ = mzero
 
 data RelatedMessage = RelatedMessage
     { rmMessage :: RoomMessage
@@ -106,34 +109,32 @@ instance ToJSON Event where
     toJSON event = case event of
         EventRoomMessage msg -> toJSON msg
         EventRoomReply eventID msg ->
-            let replyAttr =
-                    [ "m.relates_to"
-                        .= object
-                            [ "m.in_reply_to" .= toJSON eventID
-                            ]
-                    ]
-             in object $ replyAttr <> roomMessageAttr msg
+            withObject (KeyMap.insert "m.relates_to"
+                (object["m.in_reply_to" .= toJSON eventID])) (toJSON msg)
         EventRoomEdit (EventID eventID, msg) newMsg ->
-            let editAttr =
-                    [ "m.relates_to"
-                        .= object
-                            [ "rel_type" .= ("m.replace" :: Text)
-                            , "event_id" .= eventID
-                            ]
-                    , "m.new_content" .= object (roomMessageAttr newMsg)
-                    ]
-             in object $ editAttr <> roomMessageAttr msg
+            withObject
+                ( KeyMap.insert "m.relates_to"
+                    (object
+                        [ "rel_type" .= ("m.replace" :: Text)
+                        , "event_id" .= eventID
+                        ]
+                    )
+                . KeyMap.insert "m.new_content" (toJSON newMsg)
+                ) (toJSON msg)
         EventReaction (EventID eventID) (Annotation annotationText) ->
-            let attr =
-                    [ "m.relates_to"
-                        .= object
-                            [ "rel_type" .= ("m.annotation" :: Text)
-                            , "event_id" .= eventID
-                            , "key" .= annotationText
-                            ]
-                    ]
-             in object $ attr <> reactionAttr
+            object
+                [ "msgtype" .= ("m.reaction" :: Text)
+                , "m.relates_to"
+                    .= object
+                        [ "rel_type" .= ("m.annotation" :: Text)
+                        , "event_id" .= eventID
+                        , "key" .= annotationText
+                        ]
+                ]
         EventUnknown v -> Object v
+      where
+        withObject f (Object o) = Object (f o)
+        withObject _ v          = v
 
 instance FromJSON Event where
     parseJSON (Object content) =
