@@ -71,6 +71,7 @@ module Network.Matrix.Client (
     sendMessage,
     mkReply,
     module Network.Matrix.Events,
+    module Network.Matrix.Messages,
     setRoomAlias,
     setRoomVisibility,
     resolveRoomAlias,
@@ -159,6 +160,7 @@ import qualified Network.HTTP.Client as HTTP
 import Network.HTTP.Types.URI (urlEncode)
 import Network.Matrix.Events
 import Network.Matrix.Internal
+import Network.Matrix.Messages
 import Network.Matrix.Room
 import qualified Network.URI as URI
 

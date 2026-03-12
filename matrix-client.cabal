@@ -80,6 +80,7 @@ library
   other-modules:
     Network.Matrix.Events
     Network.Matrix.Internal
+    Network.Matrix.Messages
     Network.Matrix.Room
 
 test-suite unit
