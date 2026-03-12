@@ -123,8 +123,7 @@ instance ToJSON Event where
                 ) (toJSON msg)
         EventReaction (EventID eventID) (Annotation annotationText) ->
             object
-                [ "msgtype" .= ("m.reaction" :: Text)
-                , "m.relates_to"
+                [ "m.relates_to"
                     .= object
                         [ "rel_type" .= ("m.annotation" :: Text)
                         , "event_id" .= eventID
